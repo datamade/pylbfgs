@@ -78,3 +78,56 @@ jobs:
         twine upload --skip-existing wheelhouse/*-manylinux1_x86_64.whl
         twine upload dist/*
       continue-on-error: true
+  build_aarch64_wheel:
+    name: "test (aarch64, ${{ matrix.pyver }})"
+    strategy:
+      matrix:
+        pyver: [cp36-cp36m, cp37-cp37m, cp38-cp38]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    env:
+      py: /opt/python/${{ matrix.pyver }}/bin/python
+      img: quay.io/pypa/manylinux2014_aarch64
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up QEMU
+      id: qemu
+      uses: docker/setup-qemu-action@v1
+    - name: Install dependencies
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+          ${{ env.img }} \
+          bash -exc '${{ env.py }} -m pip install virtualenv && ${{ env.py }} -m venv .env && \
+          source .env/bin/activate && \
+          python -m pip install --upgrade pip && \
+          pip install -e . && \
+          deactivate'
+    - name: Test with pytest
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+          ${{ env.img }} \
+          bash -exc '\
+          source .env/bin/activate && \
+          pip install -r requirements.txt && \
+          pytest tests && \
+          deactivate'
+    - name: Build aarch64 wheels
+      if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+          ${{ env.img }} \
+          bash -exc '\
+          source .env/bin/activate && \
+          pip wheel -w dist --no-deps . && \
+          auditwheel repair dist/*.whl --wheel-dir wheelhouse/ && \
+          deactivate'
+      continue-on-error: true
+    - name: Publish aarch64 wheels to PyPI
+      if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+      env:
+        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        pip install twine
+        twine upload wheelhouse/*manylinux2014_aarch64.whl
+      continue-on-error: true
