@@ -98,8 +98,12 @@ def test_class_interface():
     opt.max_iterations = 3
 
     assert_array_equal(opt.minimize(f, 1e6), [0])
-
+    
     opt.max_iterations = 1
+    with pytest.warns(UserWarning):
+        opt.minimize(f, 1e7)
+
+    opt.ftol = -1
     with pytest.raises(LBFGSError):
         opt.minimize(f, 1e7)
 
